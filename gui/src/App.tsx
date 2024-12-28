@@ -105,6 +105,70 @@ const gameInitialState: GameState = {
   bullets: []
 }
 
+// Create random asteroid
+const createRandomAsteroid = (o: { width: number, height: number }) => {
+  const position = {
+    x: Math.random() * o.width,
+    y: Math.random() * o.height
+  };
+  const velocityMagnitude = 20 + Math.random() * 40;
+  const angle = Math.random() * 2 * Math.PI;
+  const velocity = {
+    x: velocityMagnitude * Math.cos(angle),
+    y: velocityMagnitude * Math.sin(angle)
+  };
+  const radius = 10 + Math.random() * 20;
+  return {
+    position,
+    velocity,
+    radius,
+    color: "gray"
+  };
+}
+
+// Split asteroid (upon collision with bullet)
+const splitAsteroid = (a: Asteroid, b: Bullet): Asteroid[] => {
+  if (a.radius < 15) return [];
+  const newRadius = a.radius / 2;
+  // twice the velocity
+  const newVelocityMagnitude = Math.sqrt(a.velocity.x * a.velocity.x + a.velocity.y * a.velocity.y) * 2;
+  // orthogonal direction to the bullet velocity
+  const angle = Math.atan2(b.velocity.y, b.velocity.x) + Math.PI / 2;
+  const newVelocity = {
+    x: newVelocityMagnitude * Math.cos(angle),
+    y: newVelocityMagnitude * Math.sin(angle)
+  };
+  return [
+    {
+      position: { x: a.position.x, y: a.position.y },
+      velocity: newVelocity,
+      radius: newRadius,
+      color: a.color
+    },
+    {
+      position: { x: a.position.x, y: a.position.y },
+      velocity: { x: -newVelocity.x, y: -newVelocity.y },
+      radius: newRadius,
+      color: a.color
+    }
+  ];
+}
+
+// Create new bullets on firing
+const createNewBullets = (spaceship: Spaceship): Bullet[] => {
+  const velocity = {
+    x: 300 * Math.cos(spaceship.angle),
+    y: 300 * Math.sin(spaceship.angle)
+  };
+  const bullet: Bullet = {
+    position: { x: spaceship.position.x, y: spaceship.position.y },
+    velocity,
+    radius: 3,
+    color: "red"
+  };
+  return [bullet];
+}
+
 const evolveSpaceship = (state: GameState, dt: number) => {
   const spaceship = state.spaceship;
   spaceship.angle += spaceship.rotation * dt;
@@ -120,6 +184,9 @@ const evolveSpaceship = (state: GameState, dt: number) => {
   while (spaceship.position.y >= state.height) spaceship.position.y -= state.height;
   while (spaceship.angle < 0) spaceship.angle += 2 * Math.PI;
   while (spaceship.angle >= 2 * Math.PI) spaceship.angle -= 2 * Math.PI;
+  // dampen the velocity based on dt at a rate of 0.8 per second
+  spaceship.velocity.x *= Math.pow(0.8, dt);
+  spaceship.velocity.y *= Math.pow(0.8, dt);
 }
 
 const evolveBullets = (state: GameState, dt: number) => {
@@ -157,33 +224,9 @@ const destructAsteroids = (state: GameState) => {
       }
       if (destruct) {
         playAsteroidExplosion();
-        if (asteroid.radius > 15) {
-          const newRadius = asteroid.radius / 2;
-          // new velocity should be orthogonal to original velocity with twice the magnitude-
-          const angle = Math.atan2(asteroid.velocity.y, asteroid.velocity.x);
-          const newAngle1 = angle + Math.PI / 2;
-          const newAngle2 = angle - Math.PI / 2;
-          const newVelocityMagnitude = Math.sqrt(asteroid.velocity.x * asteroid.velocity.x + asteroid.velocity.y * asteroid.velocity.y) * 2;
-          const newVelocity1 = {
-            x: newVelocityMagnitude * Math.cos(newAngle1),
-            y: newVelocityMagnitude * Math.sin(newAngle1)
-          };
-          const newVelocity2 = {
-            x: newVelocityMagnitude * Math.cos(newAngle2),
-            y: newVelocityMagnitude * Math.sin(newAngle2)
-          };
-          newAstroids.push({
-            position: { x: asteroid.position.x, y: asteroid.position.y },
-            velocity: newVelocity1,
-            radius: newRadius,
-            color: asteroid.color
-          });
-          newAstroids.push({
-            position: { x: asteroid.position.x, y: asteroid.position.y },
-            velocity: newVelocity2,
-            radius: newRadius,
-            color: asteroid.color
-          });
+        const asteroids = splitAsteroid(asteroid, bullet);
+        for (const a of asteroids) {
+          newAstroids.push(a);
         }
         asteroid.radius = 0;
         bullet.velocity = { x: 0, y: 0 };  // stop the bullet
@@ -244,23 +287,7 @@ const gameReducer = (state: GameState, action: GameAction): GameState => {
           position: { x: width / 2, y: height / 2 }
         },
         asteroids: [...Array(numAsteroids)].map(() => {
-          const position = {
-            x: Math.random() * width,
-            y: Math.random() * height
-          };
-          const velocityMagnitude = 20 + Math.random() * 40;
-          const angle = Math.random() * 2 * Math.PI;
-          const velocity = {
-            x: velocityMagnitude * Math.cos(angle),
-            y: velocityMagnitude * Math.sin(angle)
-          };
-          const radius = 10 + Math.random() * 20;
-          return {
-            position,
-            velocity,
-            radius,
-            color: "gray"
-          };
+          return createRandomAsteroid({width, height});
         })
       }
     }
@@ -287,20 +314,11 @@ const gameReducer = (state: GameState, action: GameAction): GameState => {
     }
     case "fireBullet": {
       const spaceship = state.spaceship;
-      const velocity = {
-        x: 300 * Math.cos(spaceship.angle),
-        y: 300 * Math.sin(spaceship.angle)
-      };
-      const bullet: Bullet = {
-        position: { x: spaceship.position.x, y: spaceship.position.y },
-        velocity,
-        radius: 3,
-        color: "red"
-      };
+      const newBullets = createNewBullets(spaceship)
       return {
         ...state,
-        bullets: [...state.bullets, bullet]
-      };
+        bullets: [...state.bullets, ...newBullets]
+      }
     }
   }
 }
@@ -320,9 +338,9 @@ const GameWindow: FunctionComponent<{ width: number, height: number }> = ({ widt
   const handleKey = useCallback((key: string, down: boolean) => {
     if (!gameState.alive) return;
     if (key === "ArrowLeft") {
-      gameDispatch({ type: "setSpaceshipRotation", rotation: down ? -Math.PI : 0 });
+      gameDispatch({ type: "setSpaceshipRotation", rotation: down ? -Math.PI * 0.6 : 0 });
     } else if (key === "ArrowRight") {
-      gameDispatch({ type: "setSpaceshipRotation", rotation: down ? Math.PI : 0 });
+      gameDispatch({ type: "setSpaceshipRotation", rotation: down ? Math.PI * 0.6 : 0 });
     } else if (key === "ArrowUp") {
       gameDispatch({ type: "setSpaceshipAcceleration", acceleration: down ? 100 : 0 });
     } else if (key === " ") {
