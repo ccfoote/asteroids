@@ -66,7 +66,9 @@ type GameState = {
   height: number,
   spaceship: Spaceship,
   asteroids: Asteroid[],
-  bullets: Bullet[]
+  bullets: Bullet[],
+  gameStartTime: number,
+  gameEndTime: number | null
 }
 
 type GameAction = {
@@ -99,10 +101,12 @@ const gameInitialState: GameState = {
     angle: 0,
     velocity: { x: 0, y: 0 },
     acceleration: 0,
-    rotation: 0,
+    rotation: 0
   },
   asteroids: [],
-  bullets: []
+  bullets: [],
+  gameStartTime: Date.now(),
+  gameEndTime: null
 }
 
 // Create random asteroid
@@ -122,8 +126,15 @@ const createRandomAsteroid = (o: { width: number, height: number }) => {
     position,
     velocity,
     radius,
-    color: "gray"
+    color: getRandomColor()
   };
+}
+
+const getRandomColor = () => {
+  const r = 100 + Math.floor(Math.random() * 155);
+  const g = 100 + Math.floor(Math.random() * 155);
+  const b = 0 + Math.floor(Math.random() * 100);
+  return `rgb(${r},${g},${b})`;
 }
 
 // Split asteroid (upon collision with bullet)
@@ -176,12 +187,20 @@ const evolveSpaceship = (state: GameState, dt: number) => {
   spaceship.velocity.y += spaceship.acceleration * Math.sin(spaceship.angle) * dt;
   spaceship.position.x += spaceship.velocity.x * dt;
   spaceship.position.y += spaceship.velocity.y * dt;
-  spaceship.position.x = (spaceship.position.x + state.width) % state.width;
-  spaceship.position.y = (spaceship.position.y + state.height) % state.height;
   while (spaceship.position.x < 0) spaceship.position.x += state.width;
-  while (spaceship.position.y < 0) spaceship.position.y += state.height;
+  while (spaceship.position.y < 0) {
+    spaceship.position.y += state.height;
+    spaceship.position.x = state.width - spaceship.position.x;
+    spaceship.velocity.x *= -1;
+    spaceship.angle = Math.PI - spaceship.angle;
+  }
   while (spaceship.position.x >= state.width) spaceship.position.x -= state.width;
-  while (spaceship.position.y >= state.height) spaceship.position.y -= state.height;
+  while (spaceship.position.y >= state.height) {
+    spaceship.position.y -= state.height;
+    spaceship.position.x = state.width - spaceship.position.x;
+    spaceship.velocity.x *= -1;
+    spaceship.angle = Math.PI - spaceship.angle;
+  }
   while (spaceship.angle < 0) spaceship.angle += 2 * Math.PI;
   while (spaceship.angle >= 2 * Math.PI) spaceship.angle -= 2 * Math.PI;
   // dampen the velocity based on dt at a rate of 0.8 per second
@@ -205,9 +224,17 @@ const evolveAsteroids = (state: GameState, dt: number) => {
     asteroid.position.x += asteroid.velocity.x * dt;
     asteroid.position.y += asteroid.velocity.y * dt;
     while (asteroid.position.x < 0) asteroid.position.x += state.width;
-    while (asteroid.position.y < 0) asteroid.position.y += state.height;
+    while (asteroid.position.y < 0) {
+      asteroid.position.y += state.height;
+      asteroid.position.x = state.width - asteroid.position.x;
+      asteroid.velocity.x *= -1;
+    }
     while (asteroid.position.x >= state.width) asteroid.position.x -= state.width;
-    while (asteroid.position.y >= state.height) asteroid.position.y -= state.height;
+    while (asteroid.position.y >= state.height) {
+      asteroid.position.y -= state.height;
+      asteroid.position.x = state.width - asteroid.position.x;
+      asteroid.velocity.x *= -1;
+    }
   });
 }
 
@@ -247,6 +274,7 @@ const destructSpaceship = (state: GameState) => {
     if (distance < asteroid.radius + spaceship.radius) {
       playGameOverSound();
       state.alive = false;
+      state.gameEndTime = Date.now();
       break;
     }
   }
@@ -257,6 +285,33 @@ const checkWin = (state: GameState) => {
     if (!state.won) {
       playVictorySound();
       state.won = true;
+      state.gameEndTime = Date.now();
+    }
+  }
+}
+
+const bounceAsteroids = (state: GameState) => {
+  const asteroids = state.asteroids;
+  for (let i1 = 0; i1 < asteroids.length; i1++) {
+    for (let i2 = i1 + 1; i2 < asteroids.length; i2++) {
+      if (i1 === i2) continue;
+      const a1 = asteroids[i1];
+      const a2 = asteroids[i2];
+      const dx = a1.position.x - a2.position.x;
+      const dy = a1.position.y - a2.position.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance < a1.radius + a2.radius) {
+        const v1 = {...a1.velocity};
+        const v2 = {...a2.velocity};
+        a1.velocity = v2;
+        a2.velocity = v1;
+        // make sure they are more than a1.radius + a2.radius apart after the bounce
+        const overlap = a1.radius + a2.radius - distance;
+        const angle = Math.atan2(dy, dx);
+        a1.position.x += overlap * Math.cos(angle);
+        a1.position.y += overlap * Math.sin(angle);
+        a2.position.x -= overlap * Math.cos(angle);
+      }
     }
   }
 }
@@ -271,6 +326,7 @@ const gameReducer = (state: GameState, action: GameAction): GameState => {
       evolveAsteroids(s, action.dt);
       destructAsteroids(s);
       destructSpaceship(s);
+      bounceAsteroids(s);
       checkWin(s);
       return s;
     }
@@ -288,7 +344,9 @@ const gameReducer = (state: GameState, action: GameAction): GameState => {
         },
         asteroids: [...Array(numAsteroids)].map(() => {
           return createRandomAsteroid({width, height});
-        })
+        }),
+        gameStartTime: Date.now(),
+        gameEndTime: null
       }
     }
     case "setSpaceshipRotation": {
@@ -314,7 +372,14 @@ const gameReducer = (state: GameState, action: GameAction): GameState => {
     }
     case "fireBullet": {
       const spaceship = state.spaceship;
-      const newBullets = createNewBullets(spaceship)
+      let newBullets = createNewBullets(spaceship)
+      const maxNumActiveBullets = 10;
+      if (newBullets.length > maxNumActiveBullets - state.bullets.length) {
+        newBullets = newBullets.slice(0, maxNumActiveBullets - state.bullets.length);
+      }
+      if (newBullets.length > 0) {
+        playAsteroidsBlip();
+      }
       return {
         ...state,
         bullets: [...state.bullets, ...newBullets]
@@ -345,7 +410,6 @@ const GameWindow: FunctionComponent<{ width: number, height: number }> = ({ widt
       gameDispatch({ type: "setSpaceshipAcceleration", acceleration: down ? 100 : 0 });
     } else if (key === " ") {
       if (down) {
-        playAsteroidsBlip();
         gameDispatch({ type: "fireBullet" });
       }
     }
@@ -359,6 +423,19 @@ const GameWindow: FunctionComponent<{ width: number, height: number }> = ({ widt
         border: "1px solid black",
       }}
     >
+      <div style={{
+        position: 'absolute',
+        top: 10,
+        left: 10,
+        color: gameState.won ? 'white' : 'black',
+        fontSize: '20px',
+        fontFamily: 'monospace'
+      }}>
+        {gameState.gameEndTime ?
+          `Time: ${((gameState.gameEndTime - gameState.gameStartTime) / 1000).toFixed(1)}s` :
+          `Time: ${((Date.now() - gameState.gameStartTime) / 1000).toFixed(1)}s`
+        }
+      </div>
       <GameCanvas
         width={width}
         height={height}
@@ -395,9 +472,27 @@ const GameCanvas: FunctionComponent<GameCanvasProps> = ({ width, height, gameSta
       ctx.fillRect(0, 0, width, height);
     }
 
+    // Check if any asteroid is too close
+    let isAsteroidClose = false;
+    for (const asteroid of asteroids) {
+      const dx = asteroid.position.x - spaceship.position.x;
+      const dy = asteroid.position.y - spaceship.position.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance < 100) {
+        isAsteroidClose = true;
+        break;
+      }
+    }
+
     // draw spaceship
     ctx.save();
     ctx.translate(spaceship.position.x, spaceship.position.y);
+
+    // Add red glow if asteroid is close
+    if (isAsteroidClose) {
+      ctx.shadowColor = 'red';
+      ctx.shadowBlur = 20;
+    }
 
     // Draw the circle
     ctx.beginPath();
@@ -429,7 +524,7 @@ const GameCanvas: FunctionComponent<GameCanvasProps> = ({ width, height, gameSta
       ctx.arc(bullet.position.x, bullet.position.y, bullet.radius, 0, 2 * Math.PI);
       ctx.fill();
     });
-  }, [divElement, width, height, spaceship, asteroids, bullets]);
+  }, [divElement, width, height, spaceship, asteroids, bullets, gameState.won]);
   return (
     <canvas
       ref={elm => setDivElement(elm)}

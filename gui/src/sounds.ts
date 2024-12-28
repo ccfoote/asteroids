@@ -138,14 +138,14 @@ export function playVictorySound() {
   // Create the first bell tone
   const oscillator1 = audioCtx.createOscillator();
   oscillator1.type = 'sine'; // Bell-like pure tone
-  oscillator1.frequency.setValueAtTime(880, audioCtx.currentTime); // Start with A5
-  oscillator1.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 2); // Descend to A4
+  oscillator1.frequency.setValueAtTime(440, audioCtx.currentTime); // Start with A5
+  oscillator1.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 2); // Descend to A4
 
   // Create the second bell tone for harmony
   const oscillator2 = audioCtx.createOscillator();
   oscillator2.type = 'sine';
-  oscillator2.frequency.setValueAtTime(660, audioCtx.currentTime); // Start with E5
-  oscillator2.frequency.exponentialRampToValueAtTime(330, audioCtx.currentTime + 2); // Descend to E4
+  oscillator2.frequency.setValueAtTime(330, audioCtx.currentTime); // Start with E5
+  oscillator2.frequency.exponentialRampToValueAtTime(660, audioCtx.currentTime + 2); // Descend to E4
 
   // Connect oscillators to gain node and destination
   oscillator1.connect(gainNode);
