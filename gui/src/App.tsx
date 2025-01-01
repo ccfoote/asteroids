@@ -38,7 +38,7 @@ function App() {
       />
       <div
         style={{
-          width: width2,
+          width: width2 - 24,
           height: 40,
           backgroundColor: '#f0f0f0',
           borderLeft: '1px solid black',
@@ -47,7 +47,7 @@ function App() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 15px',
+          padding: '0 12px',
           fontFamily: 'monospace'
         }}
       >
@@ -112,8 +112,10 @@ const GameWindow: FunctionComponent<{
       if (down) {
         gameDispatch({ type: "fireBullet", bulletType: "big" });
       }
+    } else if ((key === "s") && (down)) {
+      gameDispatch({ type: "setSpecial", special: !gameState.special });
     }
-  }, [gameState.alive, gameDispatch]);
+  }, [gameState.alive, gameDispatch, gameState.special]);
   return (
     <div
       style={{
@@ -153,6 +155,24 @@ const GameCanvas: FunctionComponent<GameCanvasProps> = ({ width, height, gameSta
     if (!ctx) return;
     ctx.clearRect(0, 0, width, height);
 
+    if (gameState.special) {
+      // draw a line from (w/4, 2*h/5) to (w/4, 3*h/5)
+      ctx.strokeStyle = "black";
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.moveTo(width / 4, 2 * height / 5);
+      ctx.lineTo(width / 4, 3 * height / 5);
+      ctx.stroke();
+
+      // draw a line from (3w/4, 2*h/5) to (3w/4, 3*h/5)
+      ctx.beginPath();
+      ctx.moveTo(3 * width / 4, 2 * height / 5);
+      ctx.lineTo(3 * width / 4, 3 * height / 5);
+      ctx.stroke();
+
+      ctx.setLineDash([]);
+    }
+
     // if win, then background should be green
     if (gameState.won) {
       ctx.fillStyle = "green";
@@ -184,7 +204,7 @@ const GameCanvas: FunctionComponent<GameCanvasProps> = ({ width, height, gameSta
     // Draw the circle
     ctx.beginPath();
     ctx.arc(0, 0, spaceship.radius, 0, 2 * Math.PI);
-    ctx.strokeStyle = spaceship.color;
+    ctx.strokeStyle = "lightblue";
     ctx.stroke();
 
     // Draw the direction triangle inside

@@ -32,6 +32,7 @@ export type GameState = {
   bullets: Bullet[];
   gameStartTime: number;
   gameEndTime: number | null;
+  special: boolean;
 };
 
 export type GameAction =
@@ -56,4 +57,8 @@ export type GameAction =
   | {
       type: "fireBullet";
       bulletType: "normal" | "big";
-    };
+    } |
+    {
+      type: "setSpecial";
+      special: boolean;
+    }

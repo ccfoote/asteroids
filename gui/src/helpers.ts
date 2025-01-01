@@ -2,7 +2,7 @@ import { playAsteroidExplosion, playGameOverSound, playVictorySound } from "./so
 import { Asteroid, Bullet, GameState, Spaceship } from "./types";
 
 // Create random asteroid
-export const createRandomAsteroid = (o: { width: number; height: number }) => {
+export const spawnRandomAsteroid = (o: { width: number; height: number }) => {
   const position = {
     x: Math.random() * o.width,
     y: Math.random() * o.height,
@@ -14,6 +14,17 @@ export const createRandomAsteroid = (o: { width: number; height: number }) => {
     y: velocityMagnitude * Math.sin(angle),
   };
   const radius = 10 + Math.random() * 20;
+
+  // do not spawn asteroids too close to the center
+  const distFromCenter = Math.sqrt(
+    Math.pow(position.x - o.width / 2, 2) +
+      Math.pow(position.y - o.height / 2, 2)
+  );
+  if (distFromCenter < 100) {
+    position.x += o.width / 2;
+    position.y += o.height / 2;
+  }
+
   return {
     position,
     velocity,
@@ -84,8 +95,27 @@ export const evolveSpaceship = (state: GameState, dt: number) => {
     spaceship.acceleration * Math.cos(spaceship.angle) * dt;
   spaceship.velocity.y +=
     spaceship.acceleration * Math.sin(spaceship.angle) * dt;
-  spaceship.position.x += spaceship.velocity.x * dt;
-  spaceship.position.y += spaceship.velocity.y * dt;
+  const newSpaceshipPosition = {
+    x: spaceship.position.x + spaceship.velocity.x * dt,
+    y: spaceship.position.y + spaceship.velocity.y * dt,
+  };
+
+  if (state.special) {
+    if ((spaceship.position.y < 3 * state.height / 5) && (spaceship.position.y > 2 * state.height / 5)) {
+      const a1 = spaceship.position.x < state.width / 4;
+      const a2 = newSpaceshipPosition.x < state.width / 4;
+      const b1 = spaceship.position.x >= 3 * state.width / 4;
+      const b2 = newSpaceshipPosition.x >= 3 * state.width / 4;
+      if ((a1 && !a2) || (!a1 && a2)) {
+        newSpaceshipPosition.x += 3 * state.width / 4 - state.width / 4;
+      }
+      else if ((b1 && !b2) || (!b1 && b2)) {
+        newSpaceshipPosition.x += state.width / 4 - 3 * state.width / 4;
+      }
+    }
+  }
+
+  spaceship.position = newSpaceshipPosition;
   while (spaceship.position.x < 0) spaceship.position.x += state.width;
   while (spaceship.position.y < 0) {
     spaceship.position.y += state.height;
@@ -125,8 +155,25 @@ export const evolveBullets = (state: GameState, dt: number) => {
 
 export const evolveAsteroids = (state: GameState, dt: number) => {
   state.asteroids.forEach((asteroid) => {
-    asteroid.position.x += asteroid.velocity.x * dt;
-    asteroid.position.y += asteroid.velocity.y * dt;
+    const newPosition = {
+        x: asteroid.position.x + asteroid.velocity.x * dt,
+        y: asteroid.position.y + asteroid.velocity.y * dt,
+    }
+    if (state.special) {
+      if ((asteroid.position.y < 3 * state.height / 5) && (asteroid.position.y > 2 * state.height / 5)) {
+        const a1 = asteroid.position.x < state.width / 4;
+        const a2 = newPosition.x < state.width / 4;
+        const b1 = asteroid.position.x >= 3 * state.width / 4;
+        const b2 = newPosition.x >= 3 * state.width / 4;
+        if ((a1 && !a2) || (!a1 && a2)) {
+          newPosition.x += 3 * state.width / 4 - state.width / 4;
+        }
+        else if ((b1 && !b2) || (!b1 && b2)) {
+          newPosition.x += state.width / 4 - 3 * state.width / 4;
+        }
+      }
+    }
+    asteroid.position = newPosition;
     while (asteroid.position.x < 0) asteroid.position.x += state.width;
     while (asteroid.position.y < 0) {
       asteroid.position.y += state.height;
